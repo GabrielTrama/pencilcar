@@ -88,11 +88,20 @@ h1 span{color:#ffd54a}
 .gtotal{color:#ffd54a;font-weight:900;margin:-2px 0 6px}
 #gcv{height:180px}
 #hud{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right))}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:18px}
+.opt{border:2px solid #ffffff22;border-radius:14px;padding:10px 6px;color:#fff;background:linear-gradient(#ffffff26,#ffffff10);font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;line-height:1.3}
+.opt:active{transform:scale(.96)}
+.opt small{display:block;font-size:11px;opacity:.75;font-weight:700}
+.linkbtn{background:none;border:0;color:#ff8a80;margin-top:16px;font-weight:800;font-size:13px;font-family:inherit;cursor:pointer;text-decoration:underline}
+#btnUndo{padding:10px 14px;font-size:17px}
+#bar{width:max-content;max-width:98vw}
+#bar .btn{padding:9px 14px}
+@media (max-width:700px){#bar .btn{padding:8px 11px;font-size:13px}.tool{padding:7px 9px;font-size:13px}}
 </style>
 </head>
 <body>
 <div id="hud">
-  <button class="ib" id="btnMenu" title="Menu">☰</button>
+  <button class="ib" id="btnMenu" title="Pausa">⏸</button>
   <div id="lvl">Fase 1</div>
   <div class="inkwrap"><span class="inkl">TINTA</span><div class="inkbar"><div id="inkfill"></div></div></div>
   <div id="stars">★ 0/3</div>
@@ -102,6 +111,8 @@ h1 span{color:#ffd54a}
 <div id="msg"></div>
 <div id="bar">
   <div id="tools" class="seg"><button class="tool on" id="btnPen">✏️ Lápis</button><button class="tool" id="btnEraser">🧽 Borracha</button></div>
+  <button class="btn gray hidden" id="btnUndo" title="Desfazer">↶</button>
+  <button class="btn alt hidden" id="btnHint">💡 Dica</button>
   <button class="btn hidden" id="btnGo">▶ Acelerar</button>
   <button class="btn gray hidden" id="btnStop">■ Parar</button>
   <button class="btn gray hidden" id="btnClear">🗑 Limpar</button>
@@ -165,6 +176,23 @@ h1 span{color:#ffd54a}
     <div class="totals"><span id="totalStars"></span><span id="nextCar"></span></div>
     <div class="grid" id="grid"></div>
     <button class="btn alt" id="btnGarage">🚗 Garagem — trocar carro</button>
+  </div>
+</div>
+
+<div id="pausep" class="overlay hidden">
+  <div class="card">
+    <h1 style="font-size:clamp(28px,6vw,40px)">⏸ <span>Pausa</span></h1>
+    <div class="row">
+      <button class="btn" id="btnResume">▶ Continuar</button>
+      <button class="btn alt" id="btnRestart">↻ Reiniciar fase</button>
+      <button class="btn gray" id="btnPauseMenu">🏠 Menu</button>
+    </div>
+    <div class="opts">
+      <button class="opt" id="optSound"></button>
+      <button class="opt" id="optVib"></button>
+      <button class="opt" id="optQ"></button>
+    </div>
+    <button class="linkbtn" id="btnReset">Zerar progresso</button>
   </div>
 </div>
 
@@ -351,6 +379,10 @@ try { save = JSON.parse(localStorage.getItem('tracerota_v1')) || { stars: [] }; 
 if (!save.stars) save.stars = [];
 function persist() { try { localStorage.setItem('tracerota_v1', JSON.stringify(save)); } catch (e) {} }
 function totalStars() { return save.stars.reduce((a, b) => a + (b || 0), 0); }
+if (!save.set) save.set = { vib: true, q: 'auto' };
+let paused = false, hist = [], pendingSnap = null, hintT = 0, hintPts = null;
+let lowQ = save.set.q === 'leve' || (save.set.q === 'auto' && !!save.set.autoLow);
+const autoQ = { t: 0, n: 0, done: false };
 
 /* ============================ ÁUDIO ============================ */
 let ac = null, master, eng, engGain, filt, noiseBuf, muted = false;
@@ -435,10 +467,11 @@ function loadLevel(i) {
   L.trees.forEach(t => { t.ph = R() * 6; });
   clearPath(); resetCar(); state = 'ready'; setTool('pen');
   $('winp').classList.add('hidden'); $('menu').classList.add('hidden'); $('garage').classList.add('hidden');
+  paused = false; $('pausep').classList.add('hidden'); hist = []; pendingSnap = null; hintT = 0;
   $('lvl').textContent = `Fase ${i + 1} · ${L.name}`;
   buildLayers(); updateUI();
   if (L.tip) setMsg(L.tip, false);
-  else if (innerHeight > innerWidth) setMsg('Dica: gire o celular 📱 para jogar em tela maior', false);
+  else if (!window.Capacitor && innerHeight > innerWidth) setMsg('Dica: gire o celular 📱 para jogar em tela maior', false);
   else setMsg('Arraste do 🚗 até a 🏁 para desenhar a estrada', false);
 }
 function clearPath() { strokes = []; cur = null; inkUsed = 0; drawing = false; erasing = false; P = null; S = null; VT = null; nMain = 0; }
@@ -452,7 +485,7 @@ function resetCar() {
 
 /* ============================ LAYOUT / CAMADAS ============================ */
 function resize() {
-  dpr = Math.min(window.devicePixelRatio || 1, 2.5); cw = innerWidth; ch = innerHeight;
+  dpr = Math.min(window.devicePixelRatio || 1, lowQ ? 1.25 : 2.5); cw = innerWidth; ch = innerHeight;
   cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr); cv.style.width = cw + 'px'; cv.style.height = ch + 'px';
   const availH = ch - HUD - 56; // espaço para a barra inferior
   sc = Math.min(cw / W, Math.max(availH, 100) / H);
@@ -600,7 +633,7 @@ function eraseAt(p) {
 function onDown(e) {
   initAudio(); e.preventDefault();
   if (!editable()) return;
-  const p = toWorld(e);
+  const p = toWorld(e); pendingSnap = strokes;
   try { cv.setPointerCapture(e.pointerId); } catch (er) {}
   if (tool === 'eraser') { beginEdit(); erasing = true; lastErase = p; hoverP = p; eraseAt(p); return; }
   let best = null, bd = 30;
@@ -635,16 +668,25 @@ function onMove(e) {
   cur.push(q); inkUsed += dd;
 }
 function onUp(e) {
-  if (erasing) { erasing = false; if (e && e.pointerType === 'touch') hoverP = null; updateUI(); afterEdit(); return; }
+  if (erasing) { erasing = false; commitSnap(); if (e && e.pointerType === 'touch') hoverP = null; updateUI(); afterEdit(); return; }
   if (!drawing) return; drawing = false;
-  if (!cur || cur.length < 2 || pathLen(cur) < 12) { cur = null; inkUsed = totalInk(); updateUI(); afterEdit(); return; }
+  if (!cur || cur.length < 2 || pathLen(cur) < 12) { cur = null; commitSnap(); inkUsed = totalInk(); updateUI(); afterEdit(); return; }
   let s = resample(cur, 5); if (s.length > 4) s = resample(smooth(s, 2, 2), 5);
   const end = s[s.length - 1]; let best = null, bd = 30;
   for (const ep of endpoints()) { const d = dist(end, ep.p); if (d < bd && dist(ep.p, s[0]) > 1) { bd = d; best = ep; } }
   if (best) s[s.length - 1] = { x: best.p.x, y: best.p.y };
-  strokes.push(s); cur = null; inkUsed = totalInk();
+  strokes = strokes.concat([s]); cur = null; commitSnap(); inkUsed = totalInk();
   if (chainComplete(chain())) { startRun(); return; }
   updateUI(); afterEdit();
+}
+function commitSnap() {
+  if (pendingSnap && pendingSnap !== strokes) { hist.push(pendingSnap); if (hist.length > 40) hist.shift(); }
+  pendingSnap = null;
+}
+function undo() {
+  if (!editable() || !hist.length) return;
+  beginEdit(); strokes = hist.pop(); cur = null; drawing = erasing = false; inkUsed = totalInk();
+  tone(420, .08, 'triangle', .1, 300); updateUI(); afterEdit();
 }
 function afterEdit() {
   const path = chain();
@@ -674,6 +716,8 @@ function updateUI() {
   $('btnGo').classList.toggle('hidden', !ed || !has);
   $('btnClear').classList.toggle('hidden', !ed || !has);
   $('btnStop').classList.toggle('hidden', state !== 'run');
+  $('btnUndo').classList.toggle('hidden', !ed || !hist.length);
+  $('btnHint').classList.toggle('hidden', !ed || !L.sol);
 }
 function levelOpen(i) { return i === 0 || (save.stars[i - 1] || 0) > 0; }
 function buildMenu() {
@@ -689,15 +733,59 @@ function buildMenu() {
   const next = Object.values(MODELS).filter(m => m.cost > tot).sort((a, b) => a.cost - b.cost)[0];
   $('nextCar').textContent = next ? `Próximo carro: ${next.icon} ${next.name} com ${next.cost} ★` : 'Todos os carros liberados! 🏆';
 }
-function showMenu() { buildMenu(); $('winp').classList.add('hidden'); $('garage').classList.add('hidden'); $('menu').classList.remove('hidden'); setEngine(false, 0); }
-$('btnMenu').onclick = showMenu; $('btnMenu2').onclick = showMenu;
+function showMenu() { paused = false; $('pausep').classList.add('hidden'); buildMenu(); $('winp').classList.add('hidden'); $('garage').classList.add('hidden'); $('menu').classList.remove('hidden'); setEngine(false, 0); }
+$('btnMenu').onclick = openPause; $('btnMenu2').onclick = showMenu;
+function isHid(id) { return $(id).classList.contains('hidden'); }
+function openPause() {
+  if (!L || !isHid('menu') || !isHid('garage') || !isHid('splash') || !isHid('winp') || !isHid('pausep')) return;
+  paused = true; setEngine(false, 0); updOpts(); $('pausep').classList.remove('hidden');
+}
+function closePause() { paused = false; $('pausep').classList.add('hidden'); }
+function updOpts() {
+  $('optSound').innerHTML = (muted ? '🔇' : '🔊') + ' Som<small>' + (muted ? 'desligado' : 'ligado') + '</small>';
+  $('optVib').innerHTML = '📳 Vibração<small>' + (save.set.vib ? 'ligada' : 'desligada') + '</small>';
+  const q = save.set.q, ql = q === 'auto' ? 'automático' + (lowQ ? ' (leve)' : '') : q === 'leve' ? 'leve' : 'normal';
+  $('optQ').innerHTML = '✨ Gráficos<small>' + ql + '</small>';
+}
+let resetArm = false;
+$('btnResume').onclick = closePause;
+$('btnRestart').onclick = () => { closePause(); loadLevel(li); };
+$('btnPauseMenu').onclick = showMenu;
+$('optSound').onclick = () => { $('btnMute').onclick(); updOpts(); };
+$('optVib').onclick = () => { save.set.vib = !save.set.vib; persist(); updOpts(); vib('medium'); };
+$('optQ').onclick = () => {
+  const order = ['auto', 'normal', 'leve']; save.set.q = order[(order.indexOf(save.set.q) + 1) % 3];
+  lowQ = save.set.q === 'leve' || (save.set.q === 'auto' && !!save.set.autoLow); persist(); resize(); updOpts();
+};
+$('btnReset').onclick = () => {
+  if (!resetArm) { resetArm = true; $('btnReset').textContent = 'Toque de novo para confirmar — apaga estrelas e carros liberados'; setTimeout(() => { resetArm = false; $('btnReset').textContent = 'Zerar progresso'; }, 4000); return; }
+  resetArm = false; $('btnReset').textContent = 'Zerar progresso';
+  save.stars = []; carModel = 'sport'; save.car = { model: 'sport', color: carColor }; persist(); showMenu();
+};
+$('btnUndo').onclick = undo;
+$('btnHint').onclick = () => { if (!editable() || !L.sol) return; hintPts = resample(catmull(L.sol, 10), 4); hintT = 4.5; tone(880, .12, 'sine', .1, 1320); };
+const Hap = () => window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Haptics;
+function vib(kind) {
+  if (!save.set.vib) return;
+  try {
+    const H = Hap(); let r;
+    if (H) r = kind === 'win' ? H.notification({ type: 'SUCCESS' }) : kind === 'fail' ? H.notification({ type: 'ERROR' }) : H.impact({ style: kind === 'light' ? 'LIGHT' : kind === 'heavy' ? 'HEAVY' : 'MEDIUM' });
+    else if (navigator.vibrate) navigator.vibrate(kind === 'win' ? [30, 60, 30] : kind === 'fail' ? 220 : kind === 'light' ? 15 : kind === 'heavy' ? 60 : 30);
+    if (r && r.catch) r.catch(() => {});
+  } catch (e) {}
+}
+function autoQuality(dt) {
+  if (save.set.q !== 'auto' || autoQ.done || state !== 'run' || paused) return;
+  autoQ.t += dt; autoQ.n++;
+  if (autoQ.t > 3) { autoQ.done = true; if (autoQ.n / autoQ.t < 45 && !lowQ) { lowQ = true; save.set.autoLow = true; persist(); resize(); } }
+}
 $('btnMute').onclick = () => { muted = !muted; try { localStorage.setItem('tracerota_mute', muted ? '1' : '0'); } catch (e) {} if (master) master.gain.value = muted ? 0 : .7; $('btnMute').textContent = muted ? '🔇' : '🔊'; initAudio(); };
 $('btnMute').textContent = muted ? '🔇' : '🔊';
 $('btnPen').onclick = () => setTool('pen');
 $('btnEraser').onclick = () => setTool('eraser');
 $('btnGo').onclick = () => { initAudio(); if (editable()) startRun(); };
 $('btnStop').onclick = () => { if (state === 'run') { state = 'ready'; resetCar(); updateUI(); afterEdit(); } };
-$('btnClear').onclick = () => { if (!editable()) return; clearPath(); resetCar(); state = 'ready'; updateUI(); afterEdit(); };
+$('btnClear').onclick = () => { if (!editable()) return; if (strokes.length) hist.push(strokes); clearPath(); resetCar(); state = 'ready'; updateUI(); afterEdit(); };
 $('btnAgain').onclick = () => { $('winp').classList.add('hidden'); startRun(); };
 $('btnNext').onclick = () => { if (li < LEVELS.length - 1) loadLevel(li + 1); else showMenu(); };
 addEventListener('keydown', e => {
@@ -705,7 +793,8 @@ addEventListener('keydown', e => {
   if (k === 'r' && editable()) startRun();
   if (k === 'e') setTool('eraser');
   if (k === 'l' || k === 'p') setTool('pen');
-  if (e.key === 'Escape') showMenu();
+  if (k === 'z' && (e.ctrlKey || e.metaKey)) undo();
+  if (e.key === 'Escape') { if (!isHid('pausep')) closePause(); else openPause(); }
 });
 addEventListener('resize', resize);
 
@@ -717,9 +806,9 @@ function startRun() {
   resetCar(); state = 'run'; startDelay = .6; runT = 0; winShown = false; sfx.start();
   $('winp').classList.add('hidden'); setMsg('', false); updateUI();
 }
-function puff(x, y, vx_, vy_, c, size, life, g, type) { if (parts.length > 500) return; parts.push({ x, y, vx: vx_, vy: vy_, c, size, life, max: life, g: g || 0, type: type || 'dust', r: Math.random() * TAU }); }
+function puff(x, y, vx_, vy_, c, size, life, g, type) { if (parts.length > (lowQ ? 160 : 500) || (lowQ && Math.random() < .45)) return; parts.push({ x, y, vx: vx_, vy: vy_, c, size, life, max: life, g: g || 0, type: type || 'dust', r: Math.random() * TAU }); }
 function endRun(kind) {
-  if (state !== 'run') return; state = 'fail'; failKind = kind; failT = 0; setEngine(false, 0);
+  if (state !== 'run') return; state = 'fail'; failKind = kind; failT = 0; setEngine(false, 0); vib('fail');
   if (kind === 'water') { sfx.splash(); for (let i = 0; i < 26; i++) { const a = Math.random() * TAU, v = 40 + Math.random() * 130; puff(car.x, car.y, Math.cos(a) * v, Math.sin(a) * v, '190,225,255', 2 + Math.random() * 2.5, .6 + Math.random() * .4, 0, 'drop'); } }
   else if (kind === 'crash' || kind === 'fence') { sfx.crash(); shake = 10; for (let i = 0; i < 18; i++) { const a = Math.random() * TAU, v = 60 + Math.random() * 200; puff(car.x, car.y, Math.cos(a) * v, Math.sin(a) * v, '255,200,80', 1.5, .3 + Math.random() * .3, 0, 'spark'); } for (let i = 0; i < 8; i++) puff(car.x, car.y, (Math.random() - .5) * 60, (Math.random() - .5) * 60, '90,90,90', 8, .9, 0, 'dust'); }
   else if (kind === 'stuck') { tone(110, .5, 'sawtooth', .1, 60); for (let i = 0; i < 14; i++) { const a = Math.random() * TAU; puff(car.x, car.y, Math.cos(a) * 70, Math.sin(a) * 70, '95,62,30', 3, .7, 0, 'drop'); } }
@@ -761,7 +850,7 @@ function stepCar(dt) {
   if (air > 0) {
     air -= dt; c.x += vx * dt; c.y += vy * dt; c.steer *= .96;
     if (air <= 0) {
-      air = 0; landT = .9; shake = 4; tone(90, .2, 'sine', .3, 45);
+      air = 0; landT = .9; shake = 4; vib('medium'); tone(90, .2, 'sine', .3, 45);
       for (let k = 0; k < 12; k++) puff(c.x + (Math.random() - .5) * 30, c.y + (Math.random() - .5) * 20, (Math.random() - .5) * 70, (Math.random() - .5) * 70, '170,150,120', 6, .6);
     }
     setEngine(true, speed * 1.25); return;
@@ -817,8 +906,8 @@ function step(dt) {
     runT += dt; stepCar(dt);
     if (state === 'run') {
       const hz = hazards(); if (hz) { endRun(hz); return; }
-      L.stars.forEach((s, i) => { if (!collected.has(i) && Math.hypot(car.x - s.x, car.y - s.y) < 26) { collected.add(i); sfx.star(); for (let k = 0; k < 12; k++) { const a = Math.random() * TAU; puff(s.x, s.y, Math.cos(a) * 90, Math.sin(a) * 90, '255,213,74', 2.4, .5, 0, 'spark'); } updateUI(); } });
-      if (air <= 0 && dist(car, L.goal) < 42) { state = 'win'; winT = 0; sfx.win(); updateUI(); }
+      L.stars.forEach((s, i) => { if (!collected.has(i) && Math.hypot(car.x - s.x, car.y - s.y) < 26) { collected.add(i); sfx.star(); vib('light'); for (let k = 0; k < 12; k++) { const a = Math.random() * TAU; puff(s.x, s.y, Math.cos(a) * 90, Math.sin(a) * 90, '255,213,74', 2.4, .5, 0, 'spark'); } updateUI(); } });
+      if (air <= 0 && dist(car, L.goal) < 42) { state = 'win'; winT = 0; sfx.win(); vib('win'); updateUI(); }
       else if ((idx >= nMain - 1 && Math.hypot(vx, vy) < 6 && startDelay <= 0 && air <= 0) || runT > 90) endRun('incomplete');
     } else {
       winT += dt;
@@ -912,6 +1001,13 @@ function drawHand(g, x, y, press) {
   part(() => g.ellipse(-7.5, 30, 4.5, 9, -0.5, 0, TAU));
   part(() => rr(g, -5, 0, 10, 30, 5));
   g.fillStyle = '#42a5f5'; part(() => rr(g, -5, 42, 26, 9, 3));
+  g.restore();
+}
+function drawHint(g) {
+  const el = 4.5 - hintT, p = Math.min(1, el / 2.2), a = Math.min(1, hintT / .8), n = Math.max(1, Math.floor(p * (hintPts.length - 1)));
+  g.save(); g.globalAlpha = a * .9;
+  strokePts(g, hintPts, n + 1, 28, 'rgba(255,230,110,.3)'); strokePts(g, hintPts, n + 1, 3, 'rgba(255,255,255,.95)', [10, 10]);
+  if (p < 1) { const q = hintPts[n]; drawHand(g, q.x, q.y, true); }
   g.restore();
 }
 const TUT = [[90, 300], [200, 240], [330, 195], [500, 195], [680, 215], [820, 270], [910, 300]];
@@ -1248,7 +1344,8 @@ function render(now) {
   }
   drawParts(ctx);
   L.trees.forEach(tr => drawTree(ctx, tr, t));
-  if (li === 0 && !strokes.length && !cur && state === 'ready') drawTutorial(ctx, t);
+  if (hintT > 0 && hintPts) drawHint(ctx);
+  else if (li === 0 && !strokes.length && !cur && state === 'ready') drawTutorial(ctx, t);
   if (tool === 'eraser' && editable() && hoverP) {
     ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
     ctx.beginPath(); ctx.arc(hoverP.x, hoverP.y, ERASE_R, 0, TAU); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
@@ -1309,9 +1406,11 @@ addEventListener('resize', () => { if (!$('garage').classList.contains('hidden')
 /* ============================ LOOP ============================ */
 let lastT = 0, acc = 0;
 function frame(now) {
-  const dt = Math.min(0.05, (now - lastT) / 1000 || 0.016); lastT = now; acc += dt;
+  const dt = Math.min(0.05, (now - lastT) / 1000 || 0.016); lastT = now; if (paused) acc = 0; else acc += dt;
   while (acc >= 1 / 120) { step(1 / 120); acc -= 1 / 120; }
-  for (let i = parts.length - 1; i >= 0; i--) { const p = parts[i]; p.life -= dt; if (p.life <= 0) { parts.splice(i, 1); continue; } p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.g * dt; if (p.type === 'dust') { p.vx *= .96; p.vy *= .96; } }
+  if (hintT > 0 && !paused) hintT -= dt;
+  autoQuality(dt);
+  if (!paused) for (let i = parts.length - 1; i >= 0; i--) { const p = parts[i]; p.life -= dt; if (p.life <= 0) { parts.splice(i, 1); continue; } p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.g * dt; if (p.type === 'dust') { p.vx *= .96; p.vy *= .96; } }
   if (shake > 0) shake = Math.max(0, shake - dt * 30);
   if (state === 'ready' || state === 'fail') setEngine(false, 0);
   render(now);
@@ -1329,14 +1428,16 @@ const isHidden = id => $(id).classList.contains('hidden');
 function onBack(exit) {
   if (!isHidden('splash') || !isHidden('menu')) { exit(); return; }
   if (!isHidden('garage')) { $('btnGarageOk').onclick(); return; }
-  if (state === 'run') { state = 'ready'; resetCar(); updateUI(); }
-  showMenu();
+  if (!isHidden('pausep')) { closePause(); return; }
+  if (!isHidden('winp')) { showMenu(); return; }
+  openPause();
 }
 try {
   const CapApp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
   if (CapApp) CapApp.addListener('backButton', () => onBack(() => CapApp.exitApp()));
 } catch (e) {}
 document.addEventListener('visibilitychange', () => {
+  if (document.hidden && state === 'run') openPause();
   if (!ac) return;
   if (document.hidden) { setEngine(false, 0); ac.suspend(); } else ac.resume();
 });

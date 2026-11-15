@@ -6,7 +6,8 @@
   "dependencies": {
     "@capacitor/android": "^8.6.2",
     "@capacitor/app": "^8.1.2",
-    "@capacitor/core": "^8.6.2"
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/haptics": "^8.0.2"
   },
   "devDependencies": {
     "@capacitor/assets": "^4.0.0",
