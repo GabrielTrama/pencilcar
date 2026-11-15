@@ -1,0 +1,6 @@
+{
+  "appId": "com.gabriel.pencilcar",
+  "appName": "Pencil Car",
+  "webDir": "www",
+  "android": { "backgroundColor": "#0c2412" }
+}
