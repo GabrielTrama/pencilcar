@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Abertura: fundo azul + logo centralizado em tamanho fixo (nunca estica) -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:type="radial" android:gradientRadius="420dp"
+                android:startColor="#1c46be" android:endColor="#040c30" />
+        </shape>
+    </item>
+    <item android:width="190dp" android:height="190dp" android:gravity="center"
+        android:drawable="@drawable/splash_logo" />
+</layer-list>
