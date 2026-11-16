@@ -97,6 +97,39 @@ h1 span{color:#ffd54a}
 #bar{width:max-content;max-width:98vw}
 #bar .btn{padding:9px 14px}
 @media (max-width:700px){#bar .btn{padding:8px 11px;font-size:13px}.tool{padding:7px 9px;font-size:13px}}
+.gh{font-size:clamp(26px,6vw,38px)}
+/* ---------- celular deitado: tudo cabe na tela, sem rolar ---------- */
+@media (orientation:landscape) and (max-height:540px){
+  .overlay{padding:8px 12px}
+  .card{padding:10px 18px 12px;max-width:min(96vw,860px);border-radius:18px}
+  h1,.gh{font-size:24px;margin-bottom:2px}
+  .sub{font-size:13px;margin:0 0 6px}
+  .how,.gsub{display:none}
+  /* garagem em duas colunas */
+  .gwrap{display:grid;grid-template-columns:1.1fr 1fr;gap:16px;align-items:center;text-align:center}
+  #gcv{height:clamp(90px,calc(100vh - 230px),170px)}
+  .gtotal{margin:0 0 4px;font-size:13px}
+  .gname{font-size:16px;margin:4px 0 0}
+  .gdesc{font-size:11.5px;margin:0 auto 2px;min-height:0;line-height:1.25}
+  .gstats{gap:2px;margin-top:2px}.st{font-size:11px}.pips i{width:18px;height:6px}
+  .glabel{margin-top:2px;font-size:10px}
+  .models{gap:6px;margin:4px 0}.mdl{padding:7px 10px;font-size:13px}
+  .swatches{display:grid;grid-template-columns:repeat(5,30px);justify-content:center;gap:7px;margin:4px 0 10px}
+  .sw{width:30px;height:30px;border-width:2px}
+  #btnGarageOk{padding:10px 22px}
+  /* menu de fases: 2 fileiras de 10 */
+  .grid{grid-template-columns:repeat(10,minmax(0,1fr));gap:6px}
+  .lv{padding:5px 1px;border-radius:12px}.lv b{font-size:16px}.lv i{font-size:8px;min-height:11px}
+  .lv small{font-size:8.5px;min-height:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 2px}
+  .totals{margin:0 2px 6px;font-size:12px}#totalStars{font-size:13px}
+  #btnGarage{margin-top:10px;padding:9px 18px}
+  /* abertura, pausa e vitória */
+  #logo{max-height:46vh;width:auto;max-width:100%}
+  .stitle{font-size:40px}.ssub{margin-top:2px}#btnPlay{margin-top:8px;padding:10px 32px}
+  .bigstars{font-size:34px;margin:2px 0}
+  .row{margin-top:8px}.opts{margin-top:10px}.opt{padding:7px 6px}.linkbtn{margin-top:10px}
+  .unlock{padding:6px;font-size:13px}
+}
 </style>
 </head>
 <body>
@@ -148,18 +181,24 @@ h1 span{color:#ffd54a}
 
 <div id="garage" class="overlay hidden">
   <div class="card">
-    <h1 style="font-size:clamp(26px,6vw,38px)">🔧 <span>Garagem</span></h1>
-    <p class="sub" style="margin-bottom:6px">Escolha o modelo e a cor do seu carro</p>
-    <div class="gtotal" id="gtotal"></div>
-    <canvas id="gcv"></canvas>
-    <div class="gname" id="gname"></div>
-    <div class="gdesc" id="gdesc"></div>
-    <div class="gstats" id="gstats"></div>
-    <div class="glabel">MODELO</div>
-    <div class="models" id="models"></div>
-    <div class="glabel">COR</div>
-    <div class="swatches" id="swatches"></div>
-    <button class="btn" id="btnGarageOk">Escolher fase ▶</button>
+    <h1 class="gh">🔧 <span>Garagem</span></h1>
+    <p class="sub gsub" style="margin-bottom:6px">Escolha o modelo e a cor do seu carro</p>
+    <div class="gwrap">
+      <div class="gleft">
+        <div class="gtotal" id="gtotal"></div>
+        <canvas id="gcv"></canvas>
+        <div class="gname" id="gname"></div>
+        <div class="gdesc" id="gdesc"></div>
+        <div class="gstats" id="gstats"></div>
+      </div>
+      <div class="gright">
+        <div class="glabel">MODELO</div>
+        <div class="models" id="models"></div>
+        <div class="glabel">COR</div>
+        <div class="swatches" id="swatches"></div>
+        <button class="btn" id="btnGarageOk">Escolher fase ▶</button>
+      </div>
+    </div>
   </div>
 </div>
 
