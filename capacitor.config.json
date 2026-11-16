@@ -3,7 +3,7 @@
   "appName": "Pencil Car",
   "webDir": "www",
   "android": {
-    "backgroundColor": "#0c2412"
+    "backgroundColor": "#0b1f5c"
   },
   "plugins": {
     "SystemBars": {
